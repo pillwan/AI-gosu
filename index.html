@@ -21,9 +21,19 @@ html{font-size:16px;scroll-behavior:smooth;overflow-x:hidden}
 .hero-meta{font-size:0.88rem;color:rgba(255,255,255,0.65);padding-top:14px;border-top:1px solid rgba(255,255,255,0.1);display:flex;justify-content:center;gap:24px;flex-wrap:wrap}
 .hero-meta strong{color:#fff}
 
-/* PDF Button */
-.pdf-btn{position:absolute;top:20px;right:20px;z-index:10;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:10px 18px;border-radius:10px;font-size:0.88rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:inherit;backdrop-filter:blur(6px)}
-.pdf-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px)}
+/* Hero Actions — Download/Share Buttons (4종) */
+.hero-actions{position:absolute;top:20px;right:20px;z-index:10;display:flex;gap:8px;flex-wrap:wrap}
+.hero-actions button{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:10px 14px;border-radius:10px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:inherit;backdrop-filter:blur(6px);min-height:40px;white-space:nowrap}
+.hero-actions button:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px)}
+.hero-actions button:disabled{opacity:0.6;cursor:wait;transform:none}
+@media (max-width:768px){
+  .hero-actions{position:static;justify-content:center;margin:0 auto 16px;padding:0 16px}
+  .hero-actions button{padding:8px 12px;font-size:0.78rem;min-height:36px}
+}
+
+/* Toast (공유 알림) */
+.toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a2e;color:#fff;padding:12px 22px;border-radius:10px;font-size:0.9rem;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,0.25);opacity:0;pointer-events:none;transition:all 0.25s ease;z-index:9999}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
 /* ─── Tab Bar ─── */
 .tab-bar{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop-filter:blur(10px);border-bottom:1px solid #e0e0e0;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;flex-wrap:wrap;padding:4px 16px;justify-content:center;align-items:center;row-gap:0}
@@ -198,7 +208,6 @@ footer{background:#001a3a;padding:40px 20px;text-align:center;color:rgba(255,255
   .big-num{font-size:28px}
   .callout,.callout-orange,.callout-mint,.callout-purple{padding:14px 16px;font-size:0.85rem}
   footer{padding:30px 16px}
-  .pdf-btn{top:10px;right:10px;padding:8px 12px;font-size:0.76rem;min-height:36px}
   .copy-box{font-size:0.8rem;padding:12px 48px 12px 12px}
   .voice-tip{padding:14px 16px}
   .compare-col{padding:18px}
@@ -221,7 +230,7 @@ footer{background:#001a3a;padding:40px 20px;text-align:center;color:rgba(255,255
 @media print{
   @page{margin:14mm}
   body{background:#fff;font-size:11pt}
-  .tab-bar,.pdf-btn,footer{display:none!important}
+  .tab-bar,.hero-actions,.toast,footer{display:none!important}
   .hero{display:none!important}
   .chapter-section{display:block!important}
   .cover-print,.keymsg-print,.toc-print,.thanks-print{display:flex!important}
@@ -293,7 +302,12 @@ footer{background:#001a3a;padding:40px 20px;text-align:center;color:rgba(255,255
 
 <!-- ─── Hero (screen) ─── -->
 <header class="hero">
-  <button class="pdf-btn" onclick="window.print()">📥 PDF 다운로드</button>
+  <div class="hero-actions">
+    <button class="pdf-portrait-btn"  onclick="printPortrait()"  title="여러 슬라이드 한 페이지 — 책자·복습용">📥 PDF 세로</button>
+    <button class="pdf-landscape-btn" onclick="printLandscape()" title="한 슬라이드 한 페이지 — 발표·프린트용">📥 PDF 가로</button>
+    <button class="pptx-btn"          onclick="downloadPPTX()"   title="이미지 기반 PPTX — 편집·재사용용">📥 PPTX</button>
+    <button class="share-btn"         onclick="copyLink()"       title="링크 클립보드 복사">📤 공유</button>
+  </div>
   <div class="hero-inner">
     <span class="hero-tag">AI EDUCATION GUIDE 2026</span>
     <h1><em>AI</em> 고수되기</h1>
@@ -3485,7 +3499,144 @@ git add ~/.claude/skills/weekly-report &amp;&amp; git commit -m "weekly-report s
 </div>
 
 <!-- ─── JavaScript ─── -->
+<div class="toast" id="toast"></div>
 <script>
+// ─── Hero Actions: PDF 세로 / PDF 가로 / PPTX / 공유 ───
+function showToast(msg){
+  const t = document.getElementById('toast');
+  if(!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function printPortrait(){
+  // 가로 모드 스타일이 남아 있으면 제거
+  const ls = document.getElementById('landscape-print-style');
+  if(ls) ls.remove();
+  document.body.classList.remove('print-landscape');
+  document.body.classList.add('print-portrait');
+  window.print();
+}
+
+function printLandscape(){
+  // 가로 인쇄 전용 @page 규칙 + 슬라이드당 한 페이지를 동적 주입
+  let styleEl = document.getElementById('landscape-print-style');
+  if(!styleEl){
+    styleEl = document.createElement('style');
+    styleEl.id = 'landscape-print-style';
+    styleEl.textContent = `
+      @page { size: A4 landscape; margin: 8mm; }
+      @media print {
+        body.print-landscape .slide-block{
+          page-break-after: always;
+          break-after: page;
+          min-height: 90vh;
+          margin: 0 auto;
+          padding: 18px 26px;
+          display: flex; flex-direction: column; justify-content: flex-start;
+          border: none;
+        }
+        body.print-landscape .slide-block:last-child{ page-break-after: auto; }
+        body.print-landscape .chapter-divider{
+          page-break-before: always;
+          min-height: 80vh;
+          display: flex !important;
+          flex-direction: column;
+          justify-content: center;
+        }
+        body.print-landscape .slide-title{ font-size: 1.4rem; }
+        body.print-landscape .slide-content{ flex: 1; }
+        body.print-landscape .cover-print,
+        body.print-landscape .toc-print,
+        body.print-landscape .keymsg-print,
+        body.print-landscape .thanks-print{
+          page-break-after: always;
+        }
+      }
+    `;
+    document.head.appendChild(styleEl);
+  }
+  document.body.classList.remove('print-portrait');
+  document.body.classList.add('print-landscape');
+  window.print();
+}
+
+function loadScript(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function downloadPPTX(){
+  const btn = document.querySelector('.pptx-btn');
+  const original = btn ? btn.textContent : '';
+  if(btn){ btn.textContent = '⏳ PPTX 생성 중...'; btn.disabled = true; }
+  try{
+    if(!window.html2canvas){
+      await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+    }
+    if(!window.PptxGenJS){
+      await loadScript('https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js');
+    }
+
+    // 모든 챕터 펼치기
+    const sections = document.querySelectorAll('.chapter-section');
+    const prevDisplay = [];
+    sections.forEach((s,i) => { prevDisplay[i] = s.style.display; s.style.display = 'block'; });
+
+    const slides = document.querySelectorAll('.slide-block');
+    const pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inch (16:9)
+
+    for(const slide of slides){
+      const canvas = await html2canvas(slide, {
+        scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false
+      });
+      const dataUrl = canvas.toDataURL('image/png');
+      const s = pptx.addSlide();
+      s.addImage({ data: dataUrl, x: 0, y: 0, w: 13.33, h: 7.5 });
+    }
+
+    // 원래 상태 복원
+    sections.forEach((s,i) => { s.style.display = prevDisplay[i] || ''; });
+
+    const title = (document.querySelector('h1')?.textContent || '슬라이드').trim();
+    await pptx.writeFile({ fileName: title + '.pptx' });
+
+    if(btn){ btn.textContent = '✓ 다운로드 완료'; }
+    showToast('✅ PPTX 파일이 생성되었습니다');
+    setTimeout(() => { if(btn){ btn.textContent = original; btn.disabled = false; } }, 2000);
+  }catch(err){
+    console.error(err);
+    if(btn){ btn.textContent = '❌ 실패'; }
+    showToast('❌ PPTX 생성 실패 (네트워크 확인)');
+    setTimeout(() => { if(btn){ btn.textContent = original; btn.disabled = false; } }, 2000);
+  }
+}
+
+function copyLink(){
+  const url = window.location.href;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(
+      () => showToast('✅ 링크가 클립보드에 복사되었습니다'),
+      () => fallbackCopy(url)
+    );
+  } else {
+    fallbackCopy(url);
+  }
+}
+function fallbackCopy(text){
+  const ta = document.createElement('textarea');
+  ta.value = text; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); showToast('✅ 링크가 클립보드에 복사되었습니다'); }
+  catch(_){ showToast('❌ 복사 실패'); }
+  document.body.removeChild(ta);
+}
+
 (function(){
   // Tab switching (Key Message + 챕터 탭)
   const tabBtns = document.querySelectorAll('.tab-btn');
